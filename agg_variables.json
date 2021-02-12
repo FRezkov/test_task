@@ -1,0 +1,24 @@
+{
+    "config_file": "/home/ubuntu/reconsil_test/database.ini",
+    "section": "test",
+    "schema_agg": "agg",
+    "schema_ods": "ods",
+    "src_table": "tb_operations",
+    "trg_table": "tb_operations_agg",
+    "pk": "user_id,operation_date,type",
+    "create_schm_query": "create schema if not exists {}",
+    "create_agg_tbl_query": "\n    create table if not exists {0}.{1} (\n            user_id uuid,\n            operation_date date,\n            type text,\n            total_amount numeric,\n            update_dttm timestamp\n            ) PARTITION BY LIST (type)\n",
+    "partition_values": [
+        "MONTH",
+        "DAY"
+    ],
+    "create_tbl_partition": "\n    CREATE TABLE IF NOT EXISTS {0}.{1}_{2} PARTITION OF {0}.{1}\n    FOR VALUES IN ('{2}')\n",
+    "create_tbl_def_partition": "\n    CREATE TABLE IF NOT EXISTS {0}.{1}_def PARTITION OF {0}.{1} DEFAULT\n",
+    "create_agg_tbl_pk": "\n    alter table {0}.{1} add unique ({2})\n",
+    "agg_query": "\n        insert into {0}.{1}\n        select user_id, \n               date(date_trunc('{2}', operation_date)) as operation_date, \n               '{2}' as \"type\", \n               sum(amount) as total_amount, \n               current_timestamp  as load_dttm \n          from {3}.{4} t\n         where exists (select 1 from {3}.{4} t1 \n                        where t.user_id = t1.user_id \n                          and t1.load_dttm >= current_timestamp - interval '{5}')\n          group by user_id, date(date_trunc('{2}', operation_date))\n",
+    "create_upsert_fnc": "\n        CREATE OR REPLACE FUNCTION {0}.{1}_upsert()\n         RETURNS trigger\n         LANGUAGE plpgsql\n        AS $function$\n        BEGIN\n           IF pg_trigger_depth() = 1 THEN\n              INSERT INTO {0}.{1} (user_id, operation_date, \"type\", total_amount, update_dttm)\n               VALUES (new.user_id, new.operation_date, new.\"type\", new.total_amount, new.update_dttm)\n                 ON CONFLICT (user_id, operation_date, \"type\")\n                 DO UPDATE \n                     set total_amount=NEW.total_amount,\n                         update_dttm=current_timestamp;\n              RETURN NULL;\n           ELSE\n              RETURN NEW;\n           END IF;\n        END;\n        $function$\n",
+    "create_upsert_trg": "\n        create trigger trg_{1}_upsert before insert on\n        {0}.{1} for each row execute function {0}.{1}_upsert()\n",
+    "create_source_index": "\n        create index {1}_user_id on {0}.{1} using btree (user_id)\n",
+    "load_period": "2 hours",
+    "max_workers": 2
+}
